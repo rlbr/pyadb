@@ -1,0 +1,16 @@
+{
+    "exe": "c:\\Program Files (x86)\\ADB\\adb.exe",
+	"date_format":"%Y-%m-%d_%H.%M.%S",
+    "local": {
+        "TWRP": "%userprofile%\\Android\\TWRP",
+        "TitaniumBackup": "%userprofile%\\Android\\TitaniumBackup",
+        "temp": "%userprofile%\\Android\\harbor",
+        "screenshots": "%userprofile%\\Pictures\\Screenshots",
+        "updates": "%userprofile%\\Downloads\\sort\\phone_updates"
+    },
+    "remote": {
+        "screenshots": "/sdcard/Pictures/Screenshots",
+        "titanium_backup": "/sdcard/TitaniumBackup",
+        "updates": "/data/lineageos_updates"
+    }
+}
