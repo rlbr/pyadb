@@ -158,7 +158,10 @@ class device:
         self.adb("shell","twrp","backup",options,name)
         phone_dir = "/data/media/0/TWRP/BACKUPS/{serial}/{name}".format(serial = self.serial,name = name)
         self.move(phone_dir,filename)
-
+        
+    def wipe(partition):
+        self.adb("shell","twrp","wipe",partition)
+    
     def unlock_phone(self,pin):
         self.send_keycode('power')
         self.send_keycode('space')
