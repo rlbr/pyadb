@@ -7,20 +7,13 @@ import subprocess
 import time
 
 debug = True
-with open('defaults.json') as d,open('keycodes.json') as k:
+path = os.path.dirname(__file__)
+with open(os.path.join(path,'defaults.json')) as d,open(os.path.join(path,'keycodes.json')) as k:
     defaults = json.load(d)
     keycodes = json.load(k)
 exe = defaults['exe']
 for key,value in defaults['local'].items():
     defaults['local'][key] = os.path.expandvars(value)
-
-#I can't lmao
-exists = '''if [ -e {} ]
-then
-    echo "True"
-else
-    echo "False"
-fi'''
 
 def merge(src, dst,log = False):
     if not os.path.exists(dst):
@@ -88,10 +81,20 @@ class device:
         return _adb(*args,out = out)
     
     def sudo(self,*args,out = False):
-        args = '"{}"'.format(" ".join(args))
-        return self.adb("shell","su","-c",args,out = out)
+        if self.info['mode'] == 'recovery':
+            
+            return self.adb(*(["shell"]+list(args)),out=out)
+        else:
+            args = '"{}"'.format(" ".join(args))
+            return self.adb("shell","su","-c",args,out = out)
     
     def exists(self,file):
+        exists = '''if [ -e {} ]
+then
+    echo "True"
+else
+    echo "False"
+fi'''
         e = exists.format(file)
         res = self.sudo(e,out=True)
         return res == "True"
@@ -108,19 +111,30 @@ class device:
             self.adb("reboot")
 
     def delete(self,path):
-        self.sudo("rm","-rf",path)
+        return self.sudo("rm","-rf",path,out=True)
 
-    def copy(self,remote,local,del_duplicate = True):
-        if os.path.exists(computer):
-            last = os.path.split(computer)[-1]
-            real_dir = computer
-            computer = os.path.join(defaults['temp'],last)
-            flag = True
-        self.adb("pull","-a",phone,computer)
-        if flag:
-            shutil.merge(computer,real_dir)
-            if os.path.exists(computer) and delete_dups:
-                shutil.rmtree(computer)
+    def copy(self,remote,local,del_duplicates = True,ignore_error=True):
+        if self.exists(remote):
+            flag = False
+            if os.path.exists(local):
+                last = os.path.split(local)[-1]
+
+                real_dir = local
+                local = os.path.join(defaults['local']['temp'],last)
+                flag = True
+            try: 
+                self.adb("pull","-a",remote,local,out=True)
+            except subprocess.CalledProcessError as e:
+                if ignore_error:
+                    pass
+                else:
+                    raise e
+            if flag:
+                merge(local,real_dir)
+                if os.path.exists(local) and del_duplicates:
+                    shutil.rmtree(local)
+        else:
+            print("File not found: {}".format(remote))
 
     def send_keycode(self,code):
         try:
@@ -129,15 +143,17 @@ class device:
             keycode = str(code)
         self.adb("shell","input","keyevent",keycode)
                 
-    def move(self,remote,local,del_duplicate = True):
-        self.copy(remote,local,del_duplicate = del_duplicate)
-        self.delete(remote)
-        
+    def move(self,remote,local,del_duplicates = True,ignore_error=False):
+        if self.exists(remote):
+            self.copy(remote,local,del_duplicates = del_duplicates,ignore_error=ignore_error)
+            self.delete(remote)
+        else:
+            print("File not found: {}".format(remote))
     def push(self,local,remote):
         self.adb('push',local,remote)
     
-    def backup(*partitions,name = None,backupdir):
-
+    def backup(self,*partitions,name = None):
+        backupdir = defaults['local']['TWRP']
         options_dict = {
             "system": "S",
             "data": "D",
@@ -159,7 +175,7 @@ class device:
         phone_dir = "/data/media/0/TWRP/BACKUPS/{serial}/{name}".format(serial = self.serial,name = name)
         self.move(phone_dir,filename)
         
-    def wipe(partition):
+    def wipe(self,partition):
         self.adb("shell","twrp","wipe",partition)
     
     def unlock_phone(self,pin):

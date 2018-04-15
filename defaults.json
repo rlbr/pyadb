@@ -3,7 +3,7 @@
 	"date_format":"%Y-%m-%d_%H.%M.%S",
     "local": {
         "TWRP": "%userprofile%\\Android\\TWRP",
-        "TitaniumBackup": "%userprofile%\\Android\\TitaniumBackup",
+        "titanium_backup": "%userprofile%\\Android\\TitaniumBackup",
         "temp": "%userprofile%\\Android\\harbor",
         "screenshots": "%userprofile%\\Pictures\\Screenshots",
         "updates": "%userprofile%\\Downloads\\sort\\phone_updates"
