@@ -55,74 +55,83 @@ def get_info():
             "serial":categories[0],
             "mode":categories[1]
             }
-        
+
         device_dict.update(dict(category.split(":") for category in categories[2:]))
         main[categories[0]] = device_dict
     return main
-        
+
 class device:
 
-            
-    def prim_device():
+#init operations
+    @classmethod
+    def prim_device(cls):
         while True:
             prim_device_serial = get_info()
             if len(prim_device_serial.keys()) > 0:
-                return device(list(prim_device_serial.keys())[0])
-            
+                return cls(list(prim_device_serial.keys())[0])
+            time.sleep(1)
+
     def __init__(self,serial=None):
         if serial:
             self.serial = serial
-            self.info = get_info()[serial]
+            info = get_info()[serial]
         else:
-            self.serial,self.info = get_info().items()[0]
-            
+            serial,self.info = get_info().items()[0]
+        self.__dict__.update(info)
+#end of init operations
+
+#command interface
     def adb(self,*args,out = False):
         args = ['-s',self.serial]+ list(args)
         return _adb(*args,out = out)
-    
+
     def sudo(self,*args,out = False):
-        if self.info['mode'] == 'recovery':
-            
+        if self.mode == 'recovery':
+
             return self.adb(*(["shell"]+list(args)),out=out)
         else:
             args = '"{}"'.format(" ".join(args))
             return self.adb("shell","su","-c",args,out = out)
-    
-    def exists(self,file):
-        exists = '''if [ -e {} ]
-then
-    echo "True"
-else
-    echo "False"
-fi'''
-        e = exists.format(file)
-        res = self.sudo(e,out=True)
-        return res == "True"
-    
-    def reboot(self,mode = None):
-        if mode:
-            if mode == "soft":
-                pid = self.adb("shell","pidof","zygote",out = True)
-                return self.sudo("kill",pid,out=True)
+#end of command interface
 
-            else:
-                self.adb("reboot",mode)
-        else:
-            self.adb("reboot")
+#file operations
+    def type(self,file):
+        exists = '''if [ -e "{file}" ]; then
+    if [ -d "{file}" ]; then
+        echo "directory"
+    elif [ -f "{file}" ]; then
+        echo "file"
+    else
+        echo "error"
+    fi
+else
+    echo "na"
+fi'''
+        e = exists.format(file = file)
+        res = self.sudo(e,out=True)
+        return res
+    def exists(self,file):
+        return self.type(file) != "na"
+    def isfile(self,file):
+        return self.type(file) == 'file'
+    def isdir(self,file):
+        return self.type(file) == 'directory'
 
     def delete(self,path):
         return self.sudo("rm","-rf",path,out=True)
 
     def copy(self,remote,local,del_duplicates = True,ignore_error=True):
-        if self.exists(remote):
+        remote_type = self.type(remote)
+        if remote_type != "na":
+            if remote_type == "directory" and not remote.endswith('/'):
+                remote += '/'
             flag = False
             if os.path.exists(local):
                 last = os.path.split(local)[-1]
-
                 real_dir = local
                 local = os.path.join(defaults['local']['temp'],last)
                 flag = True
-            try: 
+            try:
                 self.adb("pull","-a",remote,local,out=True)
             except subprocess.CalledProcessError as e:
                 if ignore_error:
@@ -135,23 +144,54 @@ fi'''
                     shutil.rmtree(local)
         else:
             print("File not found: {}".format(remote))
-
-    def send_keycode(self,code):
-        try:
-            keycode = keycodes[code]
-        except KeyError:
-            keycode = str(code)
-        self.adb("shell","input","keyevent",keycode)
-                
+            
     def move(self,remote,local,del_duplicates = True,ignore_error=False):
         if self.exists(remote):
             self.copy(remote,local,del_duplicates = del_duplicates,ignore_error=ignore_error)
             self.delete(remote)
         else:
             print("File not found: {}".format(remote))
+            
     def push(self,local,remote):
         self.adb('push',local,remote)
-    
+#end of file operations
+
+#convenience
+def reboot(self,mode = None):
+        if mode:
+            if mode == "soft":
+                if self.mode != 'recovery':
+                    pid = self.adb("shell","pidof","zygote",out = True)
+                    return self.sudo("kill",pid,out=True)
+                else:
+                    return self.reboot()
+            
+            else:
+                self.adb("reboot",mode)
+        else:
+            self.adb("reboot")
+        while True:
+            infos = get_info()
+            if len(infos) > 0:
+                self.__dict__.update(get_info()[self.serial])
+                break
+            time.sleep(1)
+            
+    def send_keycode(self,code):
+        try:
+            keycode = keycodes[code]
+        except KeyError:
+            keycode = str(code)
+        self.adb("shell","input","keyevent",keycode)
+
+    def unlock_phone(self,pin):
+        self.send_keycode('power')
+        self.send_keycode('space')
+        self.adb("shell","input","text",str(pin))
+        self.send_keycode('enter')
+#end of convenience
+
+#twrp
     def backup(self,*partitions,name = None):
         backupdir = defaults['local']['TWRP']
         options_dict = {
@@ -174,15 +214,11 @@ fi'''
         self.adb("shell","twrp","backup",options,name)
         phone_dir = "/data/media/0/TWRP/BACKUPS/{serial}/{name}".format(serial = self.serial,name = name)
         self.move(phone_dir,filename)
-        
+
     def wipe(self,partition):
         self.adb("shell","twrp","wipe",partition)
-    
-    def unlock_phone(self,pin):
-        self.send_keycode('power')
-        self.send_keycode('space')
-        self.adb("shell","input","text",str(pin))
-        self.send_keycode('enter')
+
+
 
     def install(self,name):
         if os.path.exists(name):
@@ -195,6 +231,7 @@ fi'''
         else:
             update_path = '{}/{}'.format(defaults['remote']['updates'],name)
         self.adb("shell","twrp","install",update_path)
-            
+#end of twrp
+
 if __name__ == "__main__" and debug:
     d = device.prim_device()
