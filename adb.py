@@ -63,20 +63,22 @@ def get_info():
 class device:
 
 #init operations
-    @classmethod
-    def prim_device(cls):
-        while True:
-            prim_device_serial = get_info()
-            if len(prim_device_serial.keys()) > 0:
-                return cls(list(prim_device_serial.keys())[0])
-            time.sleep(1)
-
+    def prim_device():
+        cont = True
+        while cont:
+            try:
+                d = device()
+                cont = False
+            except IndexError:
+                time.sleep(1)
+        return d
+    #todo connect over tcip
     def __init__(self,serial=None):
         if serial:
             self.serial = serial
             info = get_info()[serial]
         else:
-            serial,self.info = get_info().items()[0]
+            serial,info = list(get_info().items())[0]
         self.__dict__.update(info)
 #end of init operations
 
@@ -85,14 +87,14 @@ class device:
         args = ['-s',self.serial]+ list(args)
         return _adb(*args,out = out)
 
-    def sudo(self,*args,out = False):
+    def sudo(self,*args,out = False,pie=True):
         if self.mode == 'recovery':
-
-            return self.adb(*(["shell"]+list(args)),out=out)
+            args.insert(0,"shell")
+            return self.adb(*args,out=out)
         else:
-            args = '"{}"'.format(" ".join(args))
-            return self.adb("shell","su","-c",args,out = out)
-#end of command interface
+            args = '"{}"'.format(' '.join(args).replace('"','\\"'))
+            return self.adb('shell','su','-c',args,out = out)
+#end of cammand interface
 
 #file operations
     def type(self,file):
@@ -144,28 +146,28 @@ fi'''
                     shutil.rmtree(local)
         else:
             print("File not found: {}".format(remote))
-            
+
     def move(self,remote,local,del_duplicates = True,ignore_error=False):
         if self.exists(remote):
             self.copy(remote,local,del_duplicates = del_duplicates,ignore_error=ignore_error)
             self.delete(remote)
         else:
             print("File not found: {}".format(remote))
-            
+
     def push(self,local,remote):
         self.adb('push',local,remote)
 #end of file operations
 
 #convenience
-def reboot(self,mode = None):
+    def reboot(self,mode = None):
         if mode:
             if mode == "soft":
                 if self.mode != 'recovery':
                     pid = self.adb("shell","pidof","zygote",out = True)
-                    return self.sudo("kill",pid,out=True)
+                    return self.sudo("kill",pid,out=False)
                 else:
                     return self.reboot()
-            
+
             else:
                 self.adb("reboot",mode)
         else:
@@ -176,7 +178,7 @@ def reboot(self,mode = None):
                 self.__dict__.update(get_info()[self.serial])
                 break
             time.sleep(1)
-            
+
     def send_keycode(self,code):
         try:
             keycode = keycodes[code]
