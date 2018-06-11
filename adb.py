@@ -14,6 +14,29 @@ with open(os.path.join(path,'defaults.json')) as d,open(os.path.join(path,'keyco
 exe = defaults['exe']
 for key,value in defaults['local'].items():
     defaults['local'][key] = os.path.expandvars(value)
+    
+def decode_parcel(s):
+    bytes_pat = re.compile(r'(?<!0x)[a-f0-9]{8}')
+    res = ''
+    bytes_str = ''.join(match.group(0) for match in bytes_pat.finditer(s))
+    for p in range(0,len(bytes_str),2):
+        
+        c= chr(int(bytes_str[p:p+2],16))
+        res += c
+
+    if '$' in res:
+        res = re.search(r'(?<=\$).+',res).group(0)
+        fres = ''
+        for c in range(0,len(res),4):
+            a = res[c:c+2]
+            b = res[c+2:c+4]
+            fres += b+a
+        return fres
+    else:
+        try:
+            return int(bytes_str,16)
+        except:
+            print(bytes_str,s)
 
 def merge(src, dst,log = False):
     if not os.path.exists(dst):
@@ -86,14 +109,15 @@ class device:
     def adb(self,*args,out = False):
         args = ['-s',self.serial]+ list(args)
         return _adb(*args,out = out)
-
-    def sudo(self,*args,out = False,pie=True):
+    def shell(self,*args,out=False):
+        args = ('shell',)+args
+        return self.adb(*args,out=out)
+    def sudo(self,*args,out = False):
         if self.mode == 'recovery':
-            args.insert(0,"shell")
-            return self.adb(*args,out=out)
+            return self.shell(*args,out=out)
         else:
             args = '"{}"'.format(' '.join(args).replace('"','\\"'))
-            return self.adb('shell','su','-c',args,out = out)
+            return self.shell('su','-c',args,out = out)
 #end of cammand interface
 
 #file operations
@@ -163,7 +187,7 @@ fi'''
         if mode:
             if mode == "soft":
                 if self.mode != 'recovery':
-                    pid = self.adb("shell","pidof","zygote",out = True)
+                    pid = self.shell("pidof","zygote",out = True)
                     return self.sudo("kill",pid,out=False)
                 else:
                     return self.reboot()
@@ -184,13 +208,16 @@ fi'''
             keycode = keycodes[code]
         except KeyError:
             keycode = str(code)
-        self.adb("shell","input","keyevent",keycode)
+        self.shell("input","keyevent",keycode)
 
     def unlock_phone(self,pin):
-        self.send_keycode('power')
-        self.send_keycode('space')
-        self.adb("shell","input","text",str(pin))
-        self.send_keycode('enter')
+        if self.mode != 'recovery':
+            if not decode_parcel(self.shell('service','call', 'power','12',out=True)):
+                self.send_keycode('power')
+            if decode_parcel(self.shell('service','call','trust','7',out=True)):
+                self.send_keycode('space')
+                self.shell("input","text",str(pin))
+                self.send_keycode('enter')
 #end of convenience
 
 #twrp
@@ -213,12 +240,12 @@ fi'''
             name = "backup_"+datetime.datetime.today().strftime(defaults['date_format'])
 
         filename = os.path.join(backupdir,name)
-        self.adb("shell","twrp","backup",options,name)
+        self.shell("twrp","backup",options,name)
         phone_dir = "/data/media/0/TWRP/BACKUPS/{serial}/{name}".format(serial = self.serial,name = name)
         self.move(phone_dir,filename)
 
     def wipe(self,partition):
-        self.adb("shell","twrp","wipe",partition)
+        self.shell("twrp","wipe",partition)
 
 
 
@@ -232,7 +259,7 @@ fi'''
 
         else:
             update_path = '{}/{}'.format(defaults['remote']['updates'],name)
-        self.adb("shell","twrp","install",update_path)
+        self.shell("twrp","install",update_path)
 #end of twrp
 
 if __name__ == "__main__" and debug:
