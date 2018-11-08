@@ -261,6 +261,8 @@ fi'''
             update_path = '{}/{}'.format(defaults['remote']['updates'],name)
         self.shell("twrp","install",update_path)
 #end of twrp
-
+def time2gohome():
+    print('go home')
+    
 if __name__ == "__main__" and debug:
     d = device.prim_device()
